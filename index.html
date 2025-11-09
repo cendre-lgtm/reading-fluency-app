@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Reading Fluency</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Library for converting DOM to image -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <!-- Library for OCR (extracting text from images) -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; touch-action: manipulation; }
+        .highlight-correct { background-color: #dcfce7; color: #166534; padding: 0.1rem 0.2rem; border-radius: 0.25rem; }
+        .highlight-incorrect { background-color: #fee2e2; color: #991b1b; padding: 0.1rem 0.2rem; border-radius: 0.25rem; text-decoration: line-through; }
+        .sticky-controls {
+            position: sticky;
+            bottom: 0;
+            background: linear-gradient(to top, #ffffff 90%, rgba(255,255,255,0));
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            z-index: 10;
+        }
+        /* Loading spinner for OCR */
+        .ocr-loading { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+    <div class="max-w-3xl mx-auto min-h-screen flex flex-col">
+
+        <!-- HEADER -->
+        <header id="mainHeader" class="p-4 bg-white border-b border-slate-200 sticky top-0 z-20 flex justify-between items-center">
+            <h1 class="text-xl md:text-2xl font-bold text-blue-900 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Reading Assistant
+            </h1>
+            <span class="text-xs text-slate-500 font-medium">Made by Daphne Lin</span>
+        </header>
+
+        <!-- PAGE 1: RECORDING -->
+        <div id="recordPage" class="flex-1 flex flex-col p-4 space-y-4">
+            
+            <!-- Student Info -->
+             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <label for="studentName" class="block text-sm font-semibold text-slate-700 mb-1">Student Name (Optional)</label>
+                <input type="text" id="studentName" placeholder="Enter name for report" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+
+            <!-- Text Input Area -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col relative">
+                <div class="flex justify-between items-center mb-2">
+                    <label for="targetText" class="block text-sm font-semibold text-slate-700">Text to Read</label>
+                    <div class="flex items-center space-x-4">
+                        <!-- Hidden File Input -->
+                        <input type="file" id="imageInput" accept="image/*" class="hidden">
+                        <!-- Scan Button -->
+                        <button onclick="document.getElementById('imageInput').click()" class="flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            Scan Text
+                        </button>
+                        <button onclick="clearText()" class="text-xs text-slate-400 hover:text-slate-600">Clear</button>
+                    </div>
+                </div>
+                <div class="relative flex-1 flex flex-col">
+                    <textarea id="targetText" 
+                        class="flex-1 w-full p-3 border border-slate-200 bg-slate-50 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none text-lg leading-relaxed transition-opacity"
+                        placeholder="Paste text here, or click 'Scan Text' to take a photo..."></textarea>
+                    
+                    <!-- OCR Loading Overlay -->
+                    <div id="ocrOverlay" class="hidden absolute inset-0 bg-slate-50/90 flex flex-col items-center justify-center rounded-xl z-10">
+                         <svg class="animate-spin h-8 w-8 text-blue-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p id="ocrStatus" class="text-blue-900 font-medium ocr-loading">Initializing scanner...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status & Live Transcript -->
+            <div id="statusArea" class="min-h-[60px]">
+                <p id="statusMsg" class="text-sm text-slate-500 text-center">Ready to record.</p>
+                <p id="liveTranscript" class="text-slate-400 text-center italic text-sm truncate px-4 hidden">...</p>
+            </div>
+
+             <!-- Sticky Bottom Controls -->
+             <div class="sticky-controls mt-auto">
+                <button id="startBtn" onclick="startReading()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-blue-600/20 flex items-center justify-center active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 013-3 3 3 0 013 3v6a3 3 0 01-3 3z" />
+                    </svg>
+                    Start Reading
+                </button>
+                <button id="stopBtn" onclick="stopReading()" disabled class="hidden w-full bg-red-500 hover:bg-red-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-red-500/20 flex items-center justify-center active:scale-[0.98] transition-transform disabled:opacity-80">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                    </svg>
+                    Stop & Analyze
+                </button>
+            </div>
+        </div>
+
+        <!-- PAGE 2: RESULTS -->
+        <div id="resultsPage" class="hidden bg-slate-100 min-h-screen pb-8">
+            <!-- Actions Toolbar -->
+            <div class="sticky top-0 bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 flex justify-between items-center z-20">
+                <button onclick="showRecordPage()" class="text-blue-600 flex items-center font-medium">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+                    </svg>
+                    Try Again
+                </button>
+                <button onclick="downloadReport()" class="bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg font-medium text-sm flex items-center hover:bg-indigo-200 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Save Image
+                </button>
+            </div>
+
+            <!-- REPORT CONTAINER -->
+            <div id="reportContainer" class="p-4 space-y-4 bg-slate-100">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 text-center">
+                    <h2 class="text-2xl font-bold text-slate-800">閱讀評估報告</h2>
+                    <p id="reportDate" class="text-slate-500 text-sm mt-1"></p>
+                    <p id="reportStudentName" class="text-indigo-600 font-semibold mt-2 text-lg hidden"></p>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 md:gap-4">
+                    <div class="bg-white p-3 md:p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <div class="text-xs md:text-sm text-slate-500 uppercase font-semibold">準確度 (Accuracy)</div>
+                        <div id="accuracyScore" class="text-2xl md:text-4xl font-bold text-blue-600 mt-1">0%</div>
+                    </div>
+                    <div class="bg-white p-3 md:p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <div class="text-xs md:text-sm text-slate-500 uppercase font-semibold">語速 (Speed)</div>
+                        <div class="text-2xl md:text-4xl font-bold text-indigo-600 mt-1"><span id="wpmScore">0</span> <span class="text-sm md:text-lg text-indigo-400">WPM</span></div>
+                    </div>
+                    <div class="bg-white p-3 md:p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <div class="text-xs md:text-sm text-slate-500 uppercase font-semibold">時間 (Time)</div>
+                        <div id="timeTaken" class="text-2xl md:text-4xl font-bold text-slate-700 mt-1">0s</div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                    <h3 class="font-semibold text-slate-700 mb-3">朗讀回放 (Visual Playback)</h3>
+                    <div id="visualFeedback" class="text-base md:text-lg leading-loose text-slate-600"></div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                         <h3 class="font-semibold text-red-600 mb-3 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                             需要加強的單字
+                         </h3>
+                         <ul id="errorList" class="space-y-2 text-sm"></ul>
+                         <p id="noErrorsMsg" class="hidden text-slate-400 text-sm italic">沒有錯誤！太棒了。</p>
+                    </div>
+
+                    <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
+                        <h3 class="font-semibold text-indigo-900 mb-3">老師的建議 (Teacher Notes)</h3>
+                        <ul id="recommendationsList" class="list-disc list-inside text-indigo-800 text-sm space-y-2"></ul>
+                   </div>
+                </div>
+            </div> 
+        </div>
+
+        <!-- Not supported message -->
+        <div id="notSupported" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6">
+            <div class="bg-white p-6 rounded-2xl max-w-sm text-center">
+                <h2 class="text-xl font-bold text-red-600 mb-2">Browser Not Supported</h2>
+                <p class="text-slate-600 mb-6 text-sm">This app needs Google Chrome, Edge, or Safari (recent versions).</p>
+                <button onclick="document.getElementById('notSupported').style.display='none'" class="bg-slate-100 px-6 py-3 rounded-xl font-medium w-full">Okay</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Variables ---
+        let recognition;
+        let isRecording = false;
+        let startTime;
+        let finalTranscript = '';
+
+        // --- DOM Elements ---
+        const recordPage = document.getElementById('recordPage');
+        const resultsPage = document.getElementById('resultsPage');
+        const mainHeader = document.getElementById('mainHeader');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusMsg = document.getElementById('statusMsg');
+        const liveTranscript = document.getElementById('liveTranscript');
+        const targetTextArea = document.getElementById('targetText');
+        const ocrOverlay = document.getElementById('ocrOverlay');
+        const ocrStatus = document.getElementById('ocrStatus');
+
+        // --- Initialization Check ---
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isRecording = true;
+                startTime = new Date();
+                finalTranscript = '';
+                liveTranscript.textContent = 'Listening...';
+                liveTranscript.classList.remove('hidden');
+                statusMsg.textContent = 'Recording...';
+                statusMsg.className = 'text-sm text-red-600 font-medium animate-pulse';
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+                stopBtn.disabled = false;
+            };
+
+            recognition.onerror = (event) => {
+                let msg = 'Error: ' + event.error;
+                if (event.error === 'not-allowed') msg = 'Microphone access blocked. Please check phone settings.';
+                statusMsg.textContent = msg;
+                statusMsg.className = 'text-sm text-red-600 font-bold';
+                stopRecording(false);
+            };
+
+            recognition.onend = () => {
+                if (isRecording) recognition.start();
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript + ' ';
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+                liveTranscript.textContent = (finalTranscript + interimTranscript).slice(-50);
+            };
+
+        } else {
+            document.getElementById('notSupported').classList.remove('hidden');
+        }
+
+        // --- OCR (Image Text Scanning) Logic ---
+        document.getElementById('imageInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Show loading state
+            ocrOverlay.classList.remove('hidden');
+            startBtn.disabled = true;
+            ocrStatus.textContent = "Loading scanner engine...";
+
+            try {
+                // Initialize OCR worker
+                const worker = await Tesseract.createWorker("eng", 1, {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                             ocrStatus.textContent = `Scanning... ${Math.round(m.progress * 100)}%`;
+                        } else {
+                             ocrStatus.textContent = m.status;
+                        }
+                    }
+                });
+                
+                ocrStatus.textContent = "Processing image...";
+                const ret = await worker.recognize(file);
+                
+                // Clean up results (remove extra newlines that OCR often adds)
+                const cleanedText = ret.data.text.replace(/\n\s*\n/g, '\n').trim();
+                targetTextArea.value = cleanedText;
+
+                await worker.terminate();
+            } catch (err) {
+                alert("Sorry, we couldn't read text from that image. Try a clearer photo with better lighting.");
+                console.error(err);
+            } finally {
+                // Hide loading state
+                ocrOverlay.classList.add('hidden');
+                startBtn.disabled = false;
+                e.target.value = ''; // allow re-selecting same file
+            }
+        });
+
+        // --- Controls ---
+        function startReading() {
+            if (!targetTextArea.value.trim()) {
+                alert("Please enter or scan some text first.");
+                targetTextArea.focus();
+                return;
+            }
+            recognition.start();
+        }
+
+        function stopReading(analyze = true) {
+            isRecording = false;
+            recognition.stop();
+            stopBtn.disabled = true;
+            if (analyze) {
+                stopBtn.innerHTML = '<svg class="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analyzing...';
+                setTimeout(() => analyzeResults(), 1500);
+            } else {
+                resetRecordUI();
+            }
+        }
+
+        function resetRecordUI() {
+             startBtn.classList.remove('hidden');
+             stopBtn.classList.add('hidden');
+             stopBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg> Stop & Analyze';
+             statusMsg.textContent = 'Ready to record.';
+             statusMsg.className = 'text-sm text-slate-500';
+             liveTranscript.classList.add('hidden');
+        }
+
+        function clearText() {
+            targetTextArea.value = '';
+            targetTextArea.focus();
+        }
+
+        function showRecordPage() {
+            resultsPage.classList.add('hidden');
+            mainHeader.classList.remove('hidden');
+            recordPage.classList.remove('hidden');
+            resetRecordUI();
+            window.scrollTo(0,0);
+        }
+
+        // --- Analysis Logic ---
+        function analyzeResults() {
+            const endTime = new Date();
+            const durationSecs = Math.max(1, (endTime - startTime) / 1000);
+            const targetText = targetTextArea.value;
+            const normalize = (text) => text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, "").replace(/\s{2,}/g, " ").trim();
+            const targetWords = normalize(targetText).split(' ');
+            const spokenWords = normalize(finalTranscript).split(' ');
+            let matches = 0, targetIndex = 0, spokenIndex = 0, visualHTML = '', errors = [];
+
+            while (targetIndex < targetWords.length) {
+                const targetWord = targetWords[targetIndex];
+                let foundMatch = false;
+                let searchLimit = Math.min(spokenIndex + 5, spokenWords.length);
+                for (let i = spokenIndex; i < searchLimit; i++) {
+                     if (spokenWords[i] === targetWord) {
+                         visualHTML += `<span class="highlight-correct mx-[2px]">${targetWords[targetIndex]}</span> `;
+                         matches++; spokenIndex = i + 1; foundMatch = true; break;
+                     }
+                }
+                if (!foundMatch) {
+                    let heard = spokenWords[spokenIndex] || "-";
+                    if (targetIndex + 1 < targetWords.length && targetWords[targetIndex+1] === spokenWords[spokenIndex]) {
+                         heard = "(skipped)";
+                    } else { spokenIndex++; }
+                    visualHTML += `<span class="highlight-incorrect mx-[2px]">${targetWords[targetIndex]}</span> `;
+                    errors.push({ target: targetWords[targetIndex], heard: heard });
+                }
+                targetIndex++;
+            }
+
+            const accuracy = Math.round((matches / Math.max(1, targetWords.length)) * 100);
+            const wpm = Math.round((matches / durationSecs) * 60);
+
+            document.getElementById('reportDate').textContent = new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString();
+            const sName = document.getElementById('studentName').value.trim();
+            const sNameEl = document.getElementById('reportStudentName');
+            if (sName) { sNameEl.textContent = "Student: " + sName; sNameEl.classList.remove('hidden'); } else { sNameEl.classList.add('hidden'); }
+            document.getElementById('accuracyScore').textContent = `${accuracy}%`;
+            document.getElementById('wpmScore').textContent = wpm;
+            document.getElementById('timeTaken').textContent = `${Math.round(durationSecs)}s`;
+            document.getElementById('visualFeedback').innerHTML = visualHTML;
+
+            const errorList = document.getElementById('errorList');
+            errorList.innerHTML = '';
+            if (errors.length === 0) {
+                document.getElementById('noErrorsMsg').classList.remove('hidden');
+            } else {
+                document.getElementById('noErrorsMsg').classList.add('hidden');
+                errors.slice(0, 15).forEach(err => {
+                    if(err.target.trim() === '') return;
+                    errorList.innerHTML += `<li class="flex justify-between"><span>${err.target}</span> <span class="text-red-400 italic">${err.heard}</span></li>`;
+                });
+                if(errors.length > 15) errorList.innerHTML += `<li class="text-slate-400 italic">+${errors.length - 15} more...</li>`;
+            }
+
+            // Chinese Recommendations Logic (More specific for average to intermediate levels)
+            const recList = document.getElementById('recommendationsList');
+            recList.innerHTML = '';
+            if (accuracy > 95 && wpm > 130) {
+                recList.innerHTML += `<li>太棒了！流暢度和準確度都非常高，可以挑戰更難的文章了。</li>`;
+            } else if (accuracy > 95 && wpm <= 130) {
+                 recList.innerHTML += `<li>發音非常準確！現在試著稍微加快速度，讓語調聽起來更自然。</li>`;
+            } else {
+                 if (accuracy < 80) {
+                     recList.innerHTML += `<li>請特別練習左側紅色標註的單字，先查字典確認標準發音，再重新朗讀。</li>`;
+                 } else if (accuracy >= 80 && accuracy < 95) {
+                      recList.innerHTML += `<li>整體不錯，但有些小細節被忽略了。請放慢速度，確保每個字尾的聲音都有發清楚。</li>`;
+                 }
+
+                 if (wpm < 80) {
+                     recList.innerHTML += `<li>閱讀速度稍慢。建議將同一篇文章重複朗讀三次，你會發現自己越來越順暢！</li>`;
+                 } else if (wpm > 180 && accuracy < 90) {
+                      recList.innerHTML += `<li>讀得很快，但犧牲了一些準確度。試著稍微放慢速度，專注於清晰度而非速度。</li>`;
+                 }
+
+                 if (recList.innerHTML === '') {
+                     recList.innerHTML += `<li>表現得很好！持續每天練習 10 分鐘，你的進步會非常顯著。</li>`;
+                 }
+            }
+
+            recordPage.classList.add('hidden');
+            mainHeader.classList.add('hidden');
+            resultsPage.classList.remove('hidden');
+            window.scrollTo(0,0);
+        }
+
+        // --- Download Feature ---
+        function downloadReport() {
+            const reportContainer = document.getElementById('reportContainer');
+            const btn = document.querySelector('button[onclick="downloadReport()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = 'Saving...'; btn.disabled = true;
+            html2canvas(reportContainer, { scale: 2, backgroundColor: "#f1f5f9", useCORS: true }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `Reading_Report_${new Date().toISOString().slice(0,10)}.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+                btn.innerHTML = originalText; btn.disabled = false;
+            }).catch(err => {
+                alert("Could not create image. Please try taking a regular screenshot.");
+                btn.innerHTML = originalText; btn.disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>
