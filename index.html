@@ -15,7 +15,7 @@
         
         /* 螢光筆效果 */
         .highlight-correct { background-color: #dcfce7; color: #166534; border-radius: 0.25rem; padding: 0 2px; }
-        .highlight-error { background-color: #fee2e2; color: #991b1b; border-bottom: 2px solid #ef4444; padding: 0 2px; cursor: help; }
+        .highlight-error { background-color: #fee2e2; color: #991b1b; border-bottom: 2px solid #ef4444; padding: 0 2px; }
         
         /* 錄音按鈕動畫 */
         .pulse-ring {
@@ -176,7 +176,7 @@
                             <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b">
                                 <tr>
                                     <th class="px-4 py-3 font-bold">原文 (Word)</th>
-                                    <th class="px-4 py-3 font-bold">狀態/聽起來像</th>
+                                    <th class="px-4 py-3 font-bold">狀態</th>
                                     <th class="px-4 py-3 font-bold">建議</th>
                                 </tr>
                             </thead>
@@ -208,10 +208,9 @@
         // --- 變數設定 ---
         let recognition;
         let isRecording = false;
-        let isManuallyStopped = false; // 關鍵：區分是手動停止還是瀏覽器斷線
+        let isManuallyStopped = false;
         let startTime;
         let fullTranscript = ''; // 儲存所有片段的完整文字
-        let finalSegment = '';   // 當前片段的最終文字
         
         // --- DOM 元素 ---
         const startBtn = document.getElementById('startBtn');
@@ -224,8 +223,11 @@
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
-            recognition.continuous = true; // 嘗試持續錄音
-            recognition.interimResults = true;
+            
+            // ★★★ 關鍵修改 1：改為「逐句」模式 ★★★
+            recognition.continuous = false; // 瀏覽器會在停頓時自動結束
+            recognition.interimResults = false; // 我們只關心最終結果
+            
             recognition.lang = 'en-US';
 
             recognition.onstart = () => {
@@ -238,44 +240,46 @@
                 console.error("Speech Error:", event.error);
                 if (event.error === 'not-allowed') {
                     alert("麥克風權限被拒絕，請檢查設定。");
-                    stopReading();
+                    stopReading(); // 強制停止
                 }
-                // 其他錯誤忽略，讓它嘗試重啟
-            };
-
-            // ★★★ 關鍵修改：解決長文章斷線問題 ★★★
-            recognition.onend = () => {
-                if (isRecording && !isManuallyStopped) {
-                    console.log("瀏覽器自動斷線，正在重新連接...");
-                    // 將當前片段存入總文字
-                    fullTranscript += finalSegment + ' '; 
-                    finalSegment = ''; 
-                    // 立刻重啟
-                    try {
-                        recognition.start();
-                    } catch(e) {
-                        console.log("重啟失敗", e);
-                    }
-                } else {
-                    // 真正結束
-                    console.log("錄音完整結束");
-                    // 確保最後一段有存進去
-                    fullTranscript += finalSegment + ' ';
-                    analyzeAndShowResults();
+                // 忽略 'no-speech' 錯誤，讓它自動重啟
+                if (event.error === 'no-speech') {
+                    console.log("No speech detected, restarting...");
                 }
             };
 
+            // ★★★ 關鍵修改 2：只在 'onresult' 收集結果 ★★★
             recognition.onresult = (event) => {
-                let interim = '';
+                let lastChunk = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
-                        finalSegment += event.results[i][0].transcript + ' ';
-                    } else {
-                        interim += event.results[i][0].transcript;
+                        lastChunk = event.results[i][0].transcript;
                     }
                 }
-                // 更新預覽
-                transcriptPreview.textContent = (finalSegment + interim).slice(-60);
+                if (lastChunk) {
+                    fullTranscript += lastChunk + ' ';
+                    transcriptPreview.textContent = "..." + lastChunk.slice(-30);
+                }
+            };
+            
+            // ★★★ 關鍵修改 3：'onend' 負責「自動重啟」或「分析」 ★★★
+            recognition.onend = () => {
+                if (isManuallyStopped) {
+                    // 這是手動按停止的，開始分析
+                    console.log("手動停止，開始分析...");
+                    analyzeAndShowResults();
+                } else if (isRecording) {
+                    // 這是瀏覽器自動停止（例如講完一句話），我們要立刻重啟
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.error("重啟錄音失敗:", e);
+                        // 如果重啟失敗（可能網路或API問題），就當作結束
+                        analyzeAndShowResults(); 
+                    }
+                } else {
+                    // 非錄音狀態下的正常結束 (e.g. error)
+                }
             };
 
         } else {
@@ -290,98 +294,89 @@
             }
             
             isManuallyStopped = false;
+            isRecording = true; // 設置錄音狀態
             fullTranscript = '';
-            finalSegment = '';
             
-            // UI 切換
             startBtn.classList.add('hidden');
             stopBtn.classList.remove('hidden');
-            document.getElementById('recordPage').classList.add('opacity-90'); // 微微變暗專注
             
             startTime = new Date();
-            recognition.start();
+            try {
+                recognition.start();
+            } catch(e) {
+                alert("啟動麥克風失敗，請重新整理頁面。");
+            }
         }
 
         function stopReading() {
             isManuallyStopped = true; // 標記為手動停止
             isRecording = false;
-            recognition.stop();
+            recognition.stop(); // 這會觸發 onend
             
-            // UI 狀態
             stopBtn.innerHTML = `<svg class="animate-spin w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 分析結果中...`;
         }
 
-        // --- 分析核心邏輯 (升級版) ---
+        // --- 正規化文字 (用於比對) ---
+        function cleanText(txt) {
+            return txt.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'“”]/g, "");
+        }
+
+        // --- ★★★ 關鍵修改 4：全新「錨點比對」演算法 ★★★ ---
         function analyzeAndShowResults() {
             // 1. 準備資料
             const endTime = new Date();
             const durationSecs = Math.max(1, (endTime - startTime) / 1000);
-            const rawTarget = targetTextArea.value;
             
-            // 正規化：去標點、轉小寫、去多餘空白
-            const clean = (txt) => txt.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'“”]/g, "").replace(/\s+/g, " ").trim();
-            
-            const targetWords = clean(rawTarget).split(' ');
-            // 合併所有錄音片段
-            const spokenTextAll = (fullTranscript + finalSegment).trim(); 
-            const spokenWords = clean(spokenTextAll).split(' ');
+            const rawTarget = targetTextArea.value.replace(/\s+/g, " ").trim();
+            const spokenText = fullTranscript.trim();
+
+            const originalTargetWords = rawTarget.split(' ');
+            // 'targetWords' 是乾淨的，用於「比對」
+            const targetWords = originalTargetWords.map(cleanText); 
+            // 'spokenWords' 也是乾淨的
+            const spokenWords = cleanText(spokenText).split(' ');
 
             let visualHTML = '';
             let errors = [];
             let correctCount = 0;
-            let spokenIndex = 0;
+            let spokenIndex = 0; // 追蹤 'spokenWords' 念到哪了
 
-            // 2. 比對演算法 (寬容度滑動視窗)
+            // 2. 執行「錨點搜尋」比對
             for (let i = 0; i < targetWords.length; i++) {
-                const targetWord = targetWords[i];
-                let matchFound = false;
+                const currentTargetWord = targetWords[i];
+                const originalWord = originalTargetWords[i]; // 帶有標點符號的原文
                 
-                // 搜尋視窗：往後看 8 個字 (防止跳讀造成後面全錯)
-                // 如果是長文章，這個視窗很重要
-                let searchLimit = Math.min(spokenIndex + 8, spokenWords.length);
-                
-                for (let j = spokenIndex; j < searchLimit; j++) {
-                    if (spokenWords[j] === targetWord) {
-                        matchFound = true;
-                        correctCount++;
-                        // 將中間跳過的字標記
-                        spokenIndex = j + 1; 
-                        break;
-                    }
+                if (currentTargetWord === "") {
+                    visualHTML += `${originalWord} `; // 如果原文是多餘空白等，直接加入
+                    continue;
                 }
 
-                // 原文呈現 HTML 生成
-                if (matchFound) {
-                    visualHTML += `<span class="highlight-correct mx-0.5">${targetWords[i]}</span> `;
-                } else {
-                    // 錯誤分析
-                    let errorType = "Skipped"; // 預設為跳過
-                    let heardWord = "-";
-                    
-                    // 如果不是跳過，而是讀成別的字 (嘗試抓取對應位置的字)
-                    if (spokenIndex < spokenWords.length) {
-                        // 簡單判斷：如果下一個字也不是目標字的下一個字，那可能就是讀錯這個位置
-                        // 這裡只做簡單對應，避免過度複雜
-                        if (targetWords[i+1] !== spokenWords[spokenIndex]) {
-                            heardWord = spokenWords[spokenIndex];
-                            errorType = "Mismatch";
-                            // 不推進 spokenIndex，因為可能只是多讀了一個字，或者完全讀錯
-                            // 但為了避免卡住，我們假設它是替代了這個字，稍微推進
-                            // *這裡選擇保守策略：不推進 spokenIndex，除非確定是對應錯誤*
-                        }
-                    }
+                // 在「剩餘的」口語文字中，搜尋目標單字
+                // 這就是「錨點」，它會自動跳過中間遺失的字
+                const foundIndex = spokenWords.indexOf(currentTargetWord, spokenIndex);
 
-                    visualHTML += `<span class="highlight-error mx-0.5" title="可能讀成: ${heardWord}">${targetWords[i]}</span> `;
+                if (foundIndex !== -1) {
+                    // --- 找到了 (重新同步) ---
+                    correctCount++;
+                    visualHTML += `<span class="highlight-correct mx-0.5">${originalWord}</span> `;
+                    
+                    // 將「口語」的指標推進到這個錨點
+                    // 這代表 foundIndex 之前的所有口語單字都被「消耗」掉了
+                    spokenIndex = foundIndex + 1;
+                } else {
+                    // --- 沒找到 ---
+                    // 在剩餘的所有口語中，都找不到這個字。
+                    // 代表這個字 100% 是「跳過」或「念錯到無法辨識」
+                    visualHTML += `<span class="highlight-error mx-0.5">${originalWord}</span> `;
                     errors.push({
-                        word: targetWords[i],
-                        heard: heardWord,
-                        type: errorType
+                        word: originalWord,
+                        type: "Skipped / Mismatch"
                     });
                 }
             }
 
             // 3. 計算分數
-            const accuracy = Math.round((correctCount / targetWords.length) * 100);
+            const accuracy = Math.round((correctCount / targetWords.filter(w => w !== "").length) * 100);
             const wpm = Math.round((correctCount / durationSecs) * 60);
 
             // 4. 填入 UI
@@ -389,14 +384,12 @@
             document.getElementById('scoreWPM').innerText = wpm;
             document.getElementById('displayDate').innerText = new Date().toLocaleString();
             
-            // 姓名
             const sName = document.getElementById('studentName').value;
             if(sName) {
                 document.getElementById('displayName').innerText = sName;
                 document.getElementById('displayName').classList.remove('hidden');
             }
 
-            // 等級判定
             let grade = 'C';
             if (accuracy >= 90 && wpm >= 100) grade = 'A+';
             else if (accuracy >= 85) grade = 'A';
@@ -404,10 +397,10 @@
             document.getElementById('scoreGrade').innerText = grade;
             document.getElementById('scoreGrade').className = `text-xl font-bold mt-2 ${grade.startsWith('A') ? 'text-green-600' : (grade === 'B' ? 'text-blue-600' : 'text-orange-500')}`;
 
-            // 5. 生成具體回饋
+            // 5. 生成回饋
             generateFeedback(accuracy, wpm, errors);
 
-            // 6. 生成錯誤表格
+            // 6. 生成錯誤表格 (已更新，不再顯示 "heard")
             renderErrorTable(errors);
 
             document.getElementById('visualResult').innerHTML = visualHTML;
@@ -419,28 +412,23 @@
             window.scrollTo(0,0);
         }
 
-        // --- 生成老師回饋 (邏輯升級) ---
+        // --- 生成老師回饋 (同 V3) ---
         function generateFeedback(acc, wpm, errors) {
             const fbBox = document.getElementById('teacherFeedback');
             let html = '';
 
-            // 第一層：肯定 (Praise)
             if (acc > 90) html += `<p class="font-bold text-indigo-800">🎉 太棒了！你的發音非常準確，幾乎沒有錯誤。</p>`;
             else if (acc > 75) html += `<p class="font-bold text-indigo-800">👍 很好！你已經掌握了文章的大部分內容。</p>`;
             else html += `<p class="font-bold text-indigo-800">💪 精神可嘉！這篇文章有點挑戰性，但你堅持讀完了。</p>`;
 
-            // 第二層：具體建議 (Specific Advice)
             html += `<ul class="list-disc list-inside pl-2 space-y-1 mt-2">`;
             
-            // 速度建議
             if (wpm < 80) html += `<li>語速稍微偏慢。建議把這篇文章<strong>重複念三次</strong>，你會發現舌頭會越來越靈活！</li>`;
             else if (wpm > 160 && acc < 90) html += `<li>讀得很快，像連珠炮一樣！試著<strong>放慢一點點</strong>，把每個字的字尾音發清楚，分數會更高喔。</li>`;
             else html += `<li>你的語速非常適中，聽起來很舒服自然。</li>`;
 
-            // 錯誤分析建議
             if (errors.length > 0) {
-                // 檢查是否有長單字 (超過7個字母)
-                const longWordErrors = errors.filter(e => e.word.length > 7);
+                const longWordErrors = errors.filter(e => cleanText(e.word).length > 7);
                 if (longWordErrors.length > 0) {
                     html += `<li>遇到長單字（如 <span class="text-red-500 bg-red-50 px-1 rounded">${longWordErrors[0].word}</span>）時，試著把它<strong>拆成音節</strong>來念，不要急著滑過去。</li>`;
                 } else {
@@ -449,13 +437,11 @@
             }
             html += `</ul>`;
 
-            // 第三層：信心喊話 (Encouragement)
             html += `<p class="mt-3 text-indigo-600 font-medium border-t border-indigo-100 pt-2">💬 老師的小叮嚀：口語是練出來的肌肉記憶。把你覺得最難的三個字，今天多念幾次，明天你就是專家了！</p>`;
-
             fbBox.innerHTML = html;
         }
 
-        // --- 渲染錯誤表格 ---
+        // --- ★★★ 關鍵修改 5：錯誤表格不再顯示 "heard" ★★★ ---
         function renderErrorTable(errors) {
             const tbody = document.getElementById('errorTableBody');
             const noErr = document.getElementById('noErrorsMessage');
@@ -467,28 +453,20 @@
             }
             noErr.classList.add('hidden');
 
-            // 只顯示前 15 個錯誤以免表格過長
             const displayErrors = errors.slice(0, 15);
 
             displayErrors.forEach(err => {
-                let statusBadge = '';
                 let advice = '';
-
-                if (err.heard === '-' || err.heard === '(skipped)') {
-                    statusBadge = `<span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">跳過/沒聽到</span>`;
-                    advice = "試著大聲一點，或放慢速度";
-                } else {
-                    statusBadge = `<span class="text-red-600 font-medium">讀成: "${err.heard}"</span>`;
-                    // 簡單建議邏輯
-                    if (err.word.length > 6) advice = "注意音節拆分";
-                    else if (err.word.endsWith('s') || err.word.endsWith('ed')) advice = "注意字尾發音";
-                    else advice = "多聽幾次標準發音";
-                }
+                const cleanWord = cleanText(err.word);
+                
+                if (cleanWord.length > 7) advice = "注意音節拆分";
+                else if (cleanWord.endsWith('s') || cleanWord.endsWith('ed')) advice = "注意字尾發音";
+                else advice = "多聽幾次標準發音";
 
                 const row = `
                     <tr class="hover:bg-slate-50">
                         <td class="px-4 py-3 font-bold text-slate-700">${err.word}</td>
-                        <td class="px-4 py-3">${statusBadge}</td>
+                        <td class="px-4 py-3"><span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full">跳過 / 唸錯</span></td>
                         <td class="px-4 py-3 text-xs text-slate-500">${advice}</td>
                     </tr>
                 `;
@@ -496,18 +474,23 @@
             });
         }
 
+        // --- 重置 App ---
         function resetApp() {
             document.getElementById('resultsPage').classList.add('hidden');
             document.getElementById('mainHeader').classList.remove('hidden');
             document.getElementById('recordPage').classList.remove('hidden');
-            document.getElementById('recordPage').classList.remove('opacity-90');
             
-            // UI Reset
             document.getElementById('startBtn').classList.remove('hidden');
             document.getElementById('stopBtn').classList.add('hidden');
             liveStatus.textContent = "準備好就按下開始";
             liveStatus.className = "text-sm text-slate-400";
             transcriptPreview.textContent = "";
+            
+            // 恢復 "Stop" 按鈕的文字
+             document.getElementById('stopBtn').innerHTML = `
+                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
+                完成並分析
+            `;
             
             window.scrollTo(0,0);
         }
@@ -518,6 +501,7 @@
             if (!file) return;
 
             const overlay = document.getElementById('ocrOverlay');
+CSS
             const status = document.getElementById('ocrStatus');
             overlay.classList.remove('hidden');
 
@@ -547,8 +531,7 @@
         // --- 下載報告 ---
         function downloadReport() {
             const content = document.getElementById('reportContent');
-            // 暫時隱藏不需要截圖的元素 (如 shadow 等，優化視覺)
-            html2canvas(content, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
+            html2canvas(content, { scale: 2, backgroundColor: "#f1f5f9" }).then(canvas => {
                 const link = document.createElement('a');
                 link.download = `Reading_Report_${new Date().toISOString().slice(0,10)}.png`;
                 link.href = canvas.toDataURL("image/png");
