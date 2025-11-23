@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Reading Fluency Assistant</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>AI Reading Fluency Coach</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 截圖功能 -->
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
@@ -11,27 +12,27 @@
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background-color: #f0f9ff; touch-action: manipulation; }
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background-color: #f8fafc; touch-action: manipulation; }
         
-        /* 螢光筆效果 */
-        .highlight-correct { background-color: #dcfce7; color: #166534; border-radius: 0.25rem; padding: 0 2px; }
-        .highlight-error { background-color: #fee2e2; color: #991b1b; border-bottom: 2px solid #ef4444; padding: 0 2px; }
-        
-        /* 錄音按鈕動畫 */
-        .pulse-ring {
-            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
-            animation: pulse-red 2s infinite;
+        /* 螢光筆效果優化 */
+        .highlight-correct { background-color: #dcfce7; color: #15803d; padding: 2px 4px; border-radius: 4px; display: inline-block; margin: 1px; }
+        .highlight-error { background-color: #fee2e2; color: #b91c1c; text-decoration: line-through; text-decoration-color: #ef4444; padding: 2px 4px; border-radius: 4px; display: inline-block; margin: 1px; opacity: 0.8; }
+        .highlight-missing { background-color: #fef9c3; color: #b45309; border-bottom: 2px dashed #f59e0b; padding: 2px 4px; display: inline-block; margin: 1px; }
+
+        /* 錄音波紋動畫 */
+        .recording-pulse {
+            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
         }
-        @keyframes pulse-red {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
         }
 
         .sticky-bottom {
             position: sticky;
             bottom: 0;
-            background: linear-gradient(to top, #f0f9ff 90%, rgba(240, 249, 255, 0));
+            background: linear-gradient(to top, #f8fafc 90%, rgba(248, 250, 252, 0));
             padding: 1rem;
             z-index: 30;
         }
@@ -42,16 +43,17 @@
     <div class="max-w-4xl mx-auto w-full flex flex-col flex-1">
         
         <!-- 標題列 -->
-        <header id="mainHeader" class="bg-white border-b border-blue-100 p-4 sticky top-0 z-20 shadow-sm flex justify-between items-center">
+        <header id="mainHeader" class="bg-white border-b border-slate-200 p-4 sticky top-0 z-20 shadow-sm flex justify-between items-center">
             <div class="flex items-center">
-                <div class="bg-blue-600 text-white p-2 rounded-lg mr-3">
+                <div class="bg-indigo-600 text-white p-2 rounded-lg mr-3 shadow-md shadow-indigo-200">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 013-3 3 3 0 013 3v6a3 3 0 01-3 3z" />
                     </svg>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-slate-800">口語流暢度助理</h1>
-                    <p class="text-xs text-slate-500 font-medium">Made by Daphne Lin</p>
+                    <h1 class="text-xl font-bold text-slate-800 tracking-tight">AI 口語流暢度助理</h1>
+                    <p class="text-xs text-slate-500 font-medium">Reading Fluency Coach</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Made by Daphne Lin</p>
                 </div>
             </div>
         </header>
@@ -59,144 +61,162 @@
         <!-- 頁面 1: 準備與錄音 -->
         <main id="recordPage" class="flex-1 p-4 space-y-4 flex flex-col">
             
-            <!-- 學生姓名 -->
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-blue-100">
-                <label class="block text-sm font-bold text-slate-600 mb-1">學生姓名 (選填)</label>
-                <input type="text" id="studentName" placeholder="輸入姓名以顯示在報告上" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <!-- 學生資訊 -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <label class="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wide">Learner Name</label>
+                <input type="text" id="studentName" placeholder="輸入姓名 (顯示於報告)" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all">
             </div>
 
             <!-- 文章輸入區 -->
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-blue-100 flex-1 flex flex-col relative min-h-[300px]">
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col relative min-h-[280px]">
                 <div class="flex justify-between items-center mb-3">
-                    <label class="text-sm font-bold text-slate-600">練習文章</label>
+                    <label class="text-sm font-bold text-slate-700 flex items-center">
+                        <svg class="w-4 h-4 mr-1 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        練習文章 (Text to Read)
+                    </label>
                     <div class="flex gap-2">
-                        <input type="file" id="imageInput" accept="image/*" class="hidden">
-                        <button onclick="document.getElementById('imageInput').click()" class="text-sm bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-medium hover:bg-blue-100 flex items-center">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                            拍照/掃描
+                        <button onclick="pasteText()" class="hidden md:flex text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-md hover:bg-slate-200 items-center transition-colors">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                            貼上
                         </button>
-                        <button onclick="clearText()" class="text-sm text-slate-400 hover:text-slate-600 px-2">清除</button>
+                        <input type="file" id="imageInput" accept="image/*" class="hidden">
+                        <button onclick="document.getElementById('imageInput').click()" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-md font-medium hover:bg-indigo-100 flex items-center transition-colors border border-indigo-100">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            拍照掃描
+                        </button>
+                        <button onclick="clearText()" class="text-xs text-slate-400 hover:text-red-500 px-2 transition-colors">清除</button>
                     </div>
                 </div>
                 
                 <textarea id="targetText" 
-                    class="flex-1 w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-lg leading-relaxed resize-none"
-                    placeholder="請貼上英文文章，或點選上方按鈕掃描課本內容..."></textarea>
+                    class="flex-1 w-full p-4 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 text-lg leading-relaxed resize-none font-medium text-slate-700"
+                    placeholder="請貼上英文文章，或使用「拍照掃描」功能匯入課本內容..."></textarea>
 
-                <!-- OCR 讀取中的遮罩 -->
-                <div id="ocrOverlay" class="hidden absolute inset-0 bg-white/90 z-10 flex flex-col items-center justify-center rounded-xl">
-                    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-3"></div>
-                    <p id="ocrStatus" class="text-blue-600 font-bold animate-pulse">正在辨識文字...</p>
+                <!-- OCR Loading -->
+                <div id="ocrOverlay" class="hidden absolute inset-0 bg-white/95 z-10 flex flex-col items-center justify-center rounded-xl backdrop-blur-sm">
+                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-slate-100 border-t-indigo-600 mb-4"></div>
+                    <p id="ocrStatus" class="text-indigo-600 font-bold text-sm animate-pulse">正在辨識圖片文字...</p>
                 </div>
             </div>
 
-            <!-- 即時狀態 -->
-            <div class="text-center min-h-[24px]">
-                <p id="liveStatus" class="text-sm text-slate-400 transition-all">準備好就按下開始</p>
-                <p id="transcriptPreview" class="text-xs text-slate-300 truncate px-8 mt-1 h-4"></p>
+            <!-- 即時語音反饋區 (新增) -->
+            <div id="liveFeedbackArea" class="hidden bg-slate-800 text-white p-4 rounded-xl shadow-lg transition-all">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase flex items-center">
+                        <span class="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></span>
+                        Live Transcript
+                    </span>
+                    <span id="recordingTimer" class="text-xs font-mono text-slate-300">00:00</span>
+                </div>
+                <p id="interimText" class="text-sm text-slate-300 min-h-[1.5em] italic">聆聽中...</p>
+                <p id="finalTextPreview" class="text-sm font-medium mt-1 text-white border-t border-slate-700 pt-1 min-h-[1.5em]"></p>
             </div>
 
-            <!-- 控制按鈕 (置底) -->
+            <!-- 控制按鈕 -->
             <div class="sticky-bottom mt-auto">
-                <button id="startBtn" onclick="startReading()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-xl shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center">
-                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 013-3 3 3 0 013 3v6a3 3 0 01-3 3z"></path></svg>
-                    開始朗讀
+                <button id="startBtn" onclick="startReading()" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-xl shadow-lg shadow-indigo-500/25 hover:bg-indigo-700 transition-all active:scale-[0.98] flex items-center justify-center group">
+                    <div class="bg-white/20 p-2 rounded-full mr-3 group-hover:bg-white/30 transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 013-3 3 3 0 013 3v6a3 3 0 01-3 3z"></path></svg>
+                    </div>
+                    開始朗讀 (Start)
                 </button>
                 
-                <button id="stopBtn" onclick="stopReading()" class="hidden w-full bg-red-500 text-white py-4 rounded-2xl font-bold text-xl shadow-lg shadow-red-500/30 pulse-ring flex items-center justify-center">
-                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
-                    完成並分析
+                <button id="stopBtn" onclick="stopReading()" class="hidden w-full bg-white text-red-500 border-2 border-red-500 py-4 rounded-xl font-bold text-xl shadow-sm recording-pulse flex items-center justify-center hover:bg-red-50 transition-all">
+                    <div class="bg-red-500 text-white p-2 rounded-full mr-3">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
+                    </div>
+                    完成並分析 (Finish)
                 </button>
             </div>
         </main>
 
         <!-- 頁面 2: 分析報告 -->
-        <main id="resultsPage" class="hidden bg-slate-100 min-h-screen pb-12">
+        <main id="resultsPage" class="hidden bg-slate-50 min-h-screen pb-12">
             <!-- 工具列 -->
-            <div class="bg-white/90 backdrop-blur p-4 sticky top-0 z-30 border-b border-slate-200 flex justify-between shadow-sm">
-                <button onclick="resetApp()" class="text-slate-600 font-medium flex items-center hover:text-blue-600">
-                    <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                    再試一次
+            <div class="bg-white/90 backdrop-blur p-3 sticky top-0 z-30 border-b border-slate-200 flex justify-between shadow-sm items-center">
+                <button onclick="resetApp()" class="text-slate-600 font-bold text-sm flex items-center hover:text-indigo-600 bg-slate-100 px-3 py-2 rounded-lg transition-colors">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                    重試
                 </button>
-                <button onclick="downloadReport()" class="bg-blue-100 text-blue-700 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-200 flex items-center">
+                <div class="text-sm font-bold text-slate-800">評估報告</div>
+                <button onclick="downloadReport()" class="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center shadow-md shadow-indigo-200 transition-colors">
                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    下載報告
+                    下載
                 </button>
             </div>
 
             <!-- 報告內容區 (截圖範圍) -->
             <div id="reportContent" class="p-4 max-w-4xl mx-auto space-y-4">
                 
-                <!-- 標頭資訊 -->
-                <div class="text-center py-2">
-                    <h2 class="text-2xl font-bold text-slate-800">朗讀評估報告</h2>
-                    <p id="displayDate" class="text-xs text-slate-400 mt-1"></p>
-                    <p id="displayName" class="text-blue-600 font-bold text-lg mt-1 hidden"></p>
+                <!-- 標頭 -->
+                <div class="flex justify-between items-end border-b-2 border-indigo-100 pb-2">
+                    <div>
+                        <h2 class="text-2xl font-black text-slate-800">Reading Report</h2>
+                        <p id="displayName" class="text-indigo-600 font-bold text-base mt-1">Guest Student</p>
+                    </div>
+                    <div class="text-right">
+                        <p id="displayDate" class="text-xs text-slate-400"></p>
+                    </div>
                 </div>
 
                 <!-- 分數卡片 -->
                 <div class="grid grid-cols-3 gap-3">
-                    <div class="bg-white p-4 rounded-2xl shadow-sm text-center border-b-4 border-blue-500">
-                        <div class="text-xs text-slate-500 font-bold uppercase tracking-wide">準確度</div>
-                        <div id="scoreAccuracy" class="text-3xl font-bold text-slate-800 mt-1">0%</div>
+                    <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 w-16 h-16 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                        <div class="text-xs text-slate-500 font-bold uppercase tracking-wide relative z-10">準確度</div>
+                        <div id="scoreAccuracy" class="text-3xl font-black text-emerald-600 mt-1 relative z-10">0%</div>
                     </div>
-                    <div class="bg-white p-4 rounded-2xl shadow-sm text-center border-b-4 border-indigo-500">
-                        <div class="text-xs text-slate-500 font-bold uppercase tracking-wide">語速 (WPM)</div>
-                        <div id="scoreWPM" class="text-3xl font-bold text-slate-800 mt-1">0</div>
+                    <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 w-16 h-16 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                        <div class="text-xs text-slate-500 font-bold uppercase tracking-wide relative z-10">語速 (WPM)</div>
+                        <div id="scoreWPM" class="text-3xl font-black text-blue-600 mt-1 relative z-10">0</div>
                     </div>
-                    <div class="bg-white p-4 rounded-2xl shadow-sm text-center border-b-4 border-slate-400">
-                        <div class="text-xs text-slate-500 font-bold uppercase tracking-wide">流暢等級</div>
-                        <div id="scoreGrade" class="text-xl font-bold text-slate-800 mt-2">B</div>
+                    <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 w-16 h-16 bg-amber-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                        <div class="text-xs text-slate-500 font-bold uppercase tracking-wide relative z-10">評級</div>
+                        <div id="scoreGrade" class="text-3xl font-black text-amber-500 mt-1 relative z-10">C</div>
                     </div>
                 </div>
 
-                <!-- 1. 老師的回饋 (置頂重點) -->
-                <div class="bg-gradient-to-br from-indigo-50 to-white p-5 rounded-2xl shadow-sm border border-indigo-100 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 -mt-2 -mr-2 w-24 h-24 bg-indigo-100 rounded-full opacity-50 blur-xl"></div>
-                    <h3 class="font-bold text-indigo-900 flex items-center text-lg mb-3 relative z-10">
-                        <span class="bg-indigo-600 text-white rounded-full p-1 mr-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <!-- 1. 老師的回饋 -->
+                <div class="bg-gradient-to-br from-indigo-50 to-white p-5 rounded-2xl shadow-sm border border-indigo-100">
+                    <h3 class="font-bold text-indigo-900 flex items-center text-base mb-3">
+                        <span class="bg-indigo-600 text-white rounded-md p-1 mr-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
                         </span>
-                        老師的回饋 (Teacher's Feedback)
+                        AI 老師回饋 (Feedback)
                     </h3>
-                    <div id="teacherFeedback" class="space-y-3 text-slate-700 text-sm leading-relaxed relative z-10">
-                        <!-- JS 生成內容 -->
+                    <div id="teacherFeedback" class="text-slate-700 text-sm leading-relaxed space-y-2"></div>
+                </div>
+
+                <!-- 2. 全文檢視 (視覺化) -->
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="font-bold text-slate-700 mb-4 text-sm uppercase tracking-wide border-b pb-2">詳細分析 (Detail View)</h3>
+                    <div id="visualResult" class="text-lg leading-loose text-slate-400 font-medium font-sans"></div>
+                    <div class="mt-4 flex gap-4 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg">
+                        <span class="flex items-center"><span class="w-3 h-3 bg-emerald-100 text-emerald-700 rounded mr-1 inline-block"></span> 正確</span>
+                        <span class="flex items-center"><span class="w-3 h-3 bg-red-100 text-red-700 rounded mr-1 inline-block"></span> 漏讀/誤讀</span>
                     </div>
                 </div>
 
-                <!-- 2. 詳細錯誤列表 (表格化) -->
+                <!-- 3. 難字表 -->
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="bg-red-50 p-3 border-b border-red-100 flex items-center">
-                        <svg class="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                        <h3 class="font-bold text-red-900">需要練習的單字 (Details)</h3>
+                    <div class="bg-slate-50 p-3 border-b border-slate-200">
+                        <h3 class="font-bold text-slate-700 text-sm">需要練習的單字 (Practice Words)</h3>
                     </div>
-                    
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm text-left">
-                            <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b">
-                                <tr>
-                                    <th class="px-4 py-3 font-bold">原文 (Word)</th>
-                                    <th class="px-4 py-3 font-bold">狀態</th>
-                                    <th class="px-4 py-3 font-bold">建議</th>
-                                </tr>
-                            </thead>
-                            <tbody id="errorTableBody" class="divide-y divide-slate-100">
-                                <!-- JS 生成錯誤列表 -->
-                            </tbody>
+                            <tbody id="errorTableBody" class="divide-y divide-slate-100"></tbody>
                         </table>
-                        <div id="noErrorsMessage" class="hidden p-8 text-center text-slate-400 italic">
-                            太棒了！完全沒有錯誤。
+                        <div id="noErrorsMessage" class="hidden p-6 text-center text-slate-400 text-sm italic">
+                            太棒了！完全沒有嚴重錯誤。
                         </div>
-                    </div>
-                    <div class="bg-slate-50 p-2 text-center text-xs text-slate-400">
-                        * 僅列出前 15 個主要錯誤
                     </div>
                 </div>
 
-                <!-- 3. 全文檢視 -->
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                    <h3 class="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wide text-center">--- 全文檢視 (Full Text) ---</h3>
-                    <div id="visualResult" class="text-lg leading-loose text-slate-600 font-medium"></div>
+                <!-- Footer for Report -->
+                <div class="text-center text-[10px] text-slate-300 mt-4">
+                    Generated by Reading Fluency Coach AI | Made by Daphne Lin
                 </div>
 
             </div>
@@ -205,204 +225,226 @@
     </div>
 
     <script>
-        // --- 變數設定 ---
+        // --- 核心變數 ---
         let recognition;
         let isRecording = false;
-        let isManuallyStopped = false;
         let startTime;
-        let fullTranscript = ''; // 儲存所有片段的完整文字
+        let timerInterval;
+        let finalTranscript = ''; // 已確認的文字
+        let interimTranscript = ''; // 正在講的文字
         
+        // --- 演算法參數 ---
+        // 搜尋視窗：只往後找 15 個字，避免因為後面有相同的字而發生「大跳躍」
+        const LOOKAHEAD_WINDOW = 15; 
+
         // --- DOM 元素 ---
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
-        const liveStatus = document.getElementById('liveStatus');
-        const transcriptPreview = document.getElementById('transcriptPreview');
+        const liveFeedbackArea = document.getElementById('liveFeedbackArea');
+        const finalTextPreview = document.getElementById('finalTextPreview');
+        const interimTextDisplay = document.getElementById('interimText');
         const targetTextArea = document.getElementById('targetText');
+        const recordingTimer = document.getElementById('recordingTimer');
 
-        // --- 初始化語音辨識 ---
+        // --- 初始化語音辨識 (Web Speech API) ---
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
             
-            // ★★★ 關鍵修改 1：改為「逐句」模式 ★★★
-            recognition.continuous = false; // 瀏覽器會在停頓時自動結束
-            recognition.interimResults = false; // 我們只關心最終結果
-            
+            // 重要設定：連續模式 + 即時結果
+            recognition.continuous = true; 
+            recognition.interimResults = true; 
             recognition.lang = 'en-US';
 
             recognition.onstart = () => {
                 isRecording = true;
-                liveStatus.textContent = "錄音中... 請大聲朗讀";
-                liveStatus.className = "text-red-500 font-bold animate-pulse";
+                startTime = new Date();
+                startTimer();
+                liveFeedbackArea.classList.remove('hidden');
+                finalTranscript = '';
+                interimTranscript = '';
+                updateLiveDisplay();
             };
 
             recognition.onerror = (event) => {
                 console.error("Speech Error:", event.error);
                 if (event.error === 'not-allowed') {
-                    alert("麥克風權限被拒絕，請檢查設定。");
-                    stopReading(); // 強制停止
-                }
-                // 忽略 'no-speech' 錯誤，讓它自動重啟
-                if (event.error === 'no-speech') {
-                    console.log("No speech detected, restarting...");
+                    alert("請允許麥克風權限以進行錄音。");
+                    stopReading();
                 }
             };
 
-            // ★★★ 關鍵修改 2：只在 'onresult' 收集結果 ★★★
             recognition.onresult = (event) => {
-                let lastChunk = '';
+                interimTranscript = '';
+                // 遍歷所有結果
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
-                        lastChunk = event.results[i][0].transcript;
+                        finalTranscript += event.results[i][0].transcript + ' ';
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
                     }
                 }
-                if (lastChunk) {
-                    fullTranscript += lastChunk + ' ';
-                    transcriptPreview.textContent = "..." + lastChunk.slice(-30);
-                }
-            };
-            
-            // ★★★ 關鍵修改 3：'onend' 負責「自動重啟」或「分析」 ★★★
-            recognition.onend = () => {
-                if (isManuallyStopped) {
-                    // 這是手動按停止的，開始分析
-                    console.log("手動停止，開始分析...");
-                    analyzeAndShowResults();
-                } else if (isRecording) {
-                    // 這是瀏覽器自動停止（例如講完一句話），我們要立刻重啟
-                    try {
-                        recognition.start();
-                    } catch (e) {
-                        console.error("重啟錄音失敗:", e);
-                        // 如果重啟失敗（可能網路或API問題），就當作結束
-                        analyzeAndShowResults(); 
-                    }
-                } else {
-                    // 非錄音狀態下的正常結束 (e.g. error)
-                }
+                updateLiveDisplay();
             };
 
+            recognition.onend = () => {
+                if (isRecording) {
+                    // 如果是非預期的停止（例如 iOS 暫停），嘗試重啟
+                    try { recognition.start(); } catch(e) { console.log("Restarting..."); }
+                }
+            };
         } else {
-            alert("您的瀏覽器不支援語音辨識，請使用 Chrome 或 Edge。");
+            alert("您的瀏覽器不支援語音辨識，建議使用 Chrome 或 Safari。");
+            startBtn.disabled = true;
+            startBtn.innerText = "瀏覽器不支援";
+        }
+
+        // --- UI 更新函式 ---
+        function updateLiveDisplay() {
+            finalTextPreview.textContent = finalTranscript.slice(-100); // 只顯示最後一段以防太長
+            interimTextDisplay.textContent = interimTranscript;
+            interimTextDisplay.className = interimTranscript ? "text-lg text-indigo-200 font-bold" : "text-sm text-slate-400 italic";
+        }
+
+        function startTimer() {
+            let sec = 0;
+            recordingTimer.innerText = "00:00";
+            timerInterval = setInterval(() => {
+                sec++;
+                let m = Math.floor(sec / 60).toString().padStart(2, '0');
+                let s = (sec % 60).toString().padStart(2, '0');
+                recordingTimer.innerText = `${m}:${s}`;
+            }, 1000);
         }
 
         // --- 操作功能 ---
         function startReading() {
             if (!targetTextArea.value.trim()) {
                 alert("請先輸入或掃描文章內容！");
+                targetTextArea.focus();
                 return;
             }
             
-            isManuallyStopped = false;
-            isRecording = true; // 設置錄音狀態
-            fullTranscript = '';
-            
+            // UI 切換
             startBtn.classList.add('hidden');
             stopBtn.classList.remove('hidden');
+            targetTextArea.setAttribute('disabled', 'true');
             
-            startTime = new Date();
             try {
                 recognition.start();
             } catch(e) {
-                alert("啟動麥克風失敗，請重新整理頁面。");
+                console.error(e);
+                alert("無法啟動麥克風，請重新整理頁面試試。");
             }
         }
 
         function stopReading() {
-            isManuallyStopped = true; // 標記為手動停止
             isRecording = false;
-            recognition.stop(); // 這會觸發 onend
+            clearInterval(timerInterval);
+            recognition.stop();
             
-            stopBtn.innerHTML = `<svg class="animate-spin w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 分析結果中...`;
+            stopBtn.innerHTML = `
+                <svg class="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                Analyzing...
+            `;
+            
+            // 給一點時間讓最後的 result 進來
+            setTimeout(() => {
+                analyzeAndShowResults();
+            }, 800);
         }
 
-        // --- 正規化文字 (用於比對) ---
+        // --- 輔助：文字正規化 ---
         function cleanText(txt) {
-            return txt.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'“”]/g, "");
+            return txt.toLowerCase()
+                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'“”]/g, "") // 移除標點
+                .replace(/\s+/g, " ") // 合併空白
+                .trim();
         }
 
-        // --- ★★★ 關鍵修改 4：全新「錨點比對」演算法 ★★★ ---
+        // --- 核心分析演算法 (優化版) ---
         function analyzeAndShowResults() {
-            // 1. 準備資料
             const endTime = new Date();
             const durationSecs = Math.max(1, (endTime - startTime) / 1000);
             
             const rawTarget = targetTextArea.value.replace(/\s+/g, " ").trim();
-            const spokenText = fullTranscript.trim();
-
             const originalTargetWords = rawTarget.split(' ');
-            // 'targetWords' 是乾淨的，用於「比對」
-            const targetWords = originalTargetWords.map(cleanText); 
-            // 'spokenWords' 也是乾淨的
-            const spokenWords = cleanText(spokenText).split(' ');
+            
+            // 完整口說內容 = Final + Interim (以防最後一句沒變 Final)
+            const fullSpoken = (finalTranscript + ' ' + interimTranscript).trim();
+            
+            const targetWordsClean = originalTargetWords.map(cleanText);
+            const spokenWordsClean = cleanText(fullSpoken).split(' ');
 
             let visualHTML = '';
             let errors = [];
             let correctCount = 0;
-            let spokenIndex = 0; // 追蹤 'spokenWords' 念到哪了
+            let spokenIndex = 0; 
 
-            // 2. 執行「錨點搜尋」比對
-            for (let i = 0; i < targetWords.length; i++) {
-                const currentTargetWord = targetWords[i];
-                const originalWord = originalTargetWords[i]; // 帶有標點符號的原文
+            // 逐字比對 (Anchor Match with Lookahead)
+            for (let i = 0; i < targetWordsClean.length; i++) {
+                const targetW = targetWordsClean[i];
+                const originalW = originalTargetWords[i];
                 
-                if (currentTargetWord === "") {
-                    visualHTML += `${originalWord} `; // 如果原文是多餘空白等，直接加入
+                if (!targetW) { // 處理空字串
+                    visualHTML += `${originalW} `;
                     continue;
                 }
 
-                // 在「剩餘的」口語文字中，搜尋目標單字
-                // 這就是「錨點」，它會自動跳過中間遺失的字
-                const foundIndex = spokenWords.indexOf(currentTargetWord, spokenIndex);
+                // 在 "口說文字" 的視窗範圍內搜尋
+                // 範圍：從 spokenIndex 開始，往後找 LOOKAHEAD_WINDOW 個字
+                const searchLimit = Math.min(spokenWordsClean.length, spokenIndex + LOOKAHEAD_WINDOW);
+                let foundAt = -1;
 
-                if (foundIndex !== -1) {
-                    // --- 找到了 (重新同步) ---
+                for (let k = spokenIndex; k < searchLimit; k++) {
+                    if (spokenWordsClean[k] === targetW) {
+                        foundAt = k;
+                        break;
+                    }
+                }
+
+                if (foundAt !== -1) {
+                    // 找到了 -> 標記為正確
                     correctCount++;
-                    visualHTML += `<span class="highlight-correct mx-0.5">${originalWord}</span> `;
-                    
-                    // 將「口語」的指標推進到這個錨點
-                    // 這代表 foundIndex 之前的所有口語單字都被「消耗」掉了
-                    spokenIndex = foundIndex + 1;
+                    visualHTML += `<span class="highlight-correct">${originalW}</span> `;
+                    spokenIndex = foundAt + 1; // 把指針移到找到的字後面
                 } else {
-                    // --- 沒找到 ---
-                    // 在剩餘的所有口語中，都找不到這個字。
-                    // 代表這個字 100% 是「跳過」或「念錯到無法辨識」
-                    visualHTML += `<span class="highlight-error mx-0.5">${originalWord}</span> `;
-                    errors.push({
-                        word: originalWord,
-                        type: "Skipped / Mismatch"
-                    });
+                    // 沒找到 -> 標記為錯誤
+                    visualHTML += `<span class="highlight-error">${originalW}</span> `;
+                    // 只有非符號且長度>1的字才列入錯誤表，避免過於嚴格
+                    if (cleanText(originalW).length > 1) {
+                        errors.push({ word: originalW });
+                    }
                 }
             }
 
-            // 3. 計算分數
-            const accuracy = Math.round((correctCount / targetWords.filter(w => w !== "").length) * 100);
-            const wpm = Math.round((correctCount / durationSecs) * 60);
+            // 計算數據
+            const totalWords = targetWordsClean.filter(w => w.length > 0).length;
+            const accuracy = totalWords > 0 ? Math.round((correctCount / totalWords) * 100) : 0;
+            const wpm = durationSecs > 0 ? Math.round((correctCount / durationSecs) * 60) : 0;
 
-            // 4. 填入 UI
+            // 填入報告
             document.getElementById('scoreAccuracy').innerText = accuracy + "%";
             document.getElementById('scoreWPM').innerText = wpm;
-            document.getElementById('displayDate').innerText = new Date().toLocaleString();
             
-            const sName = document.getElementById('studentName').value;
-            if(sName) {
-                document.getElementById('displayName').innerText = sName;
-                document.getElementById('displayName').classList.remove('hidden');
-            }
-
+            // 評級邏輯
             let grade = 'C';
-            if (accuracy >= 90 && wpm >= 100) grade = 'A+';
-            else if (accuracy >= 85) grade = 'A';
-            else if (accuracy >= 70) grade = 'B';
-            document.getElementById('scoreGrade').innerText = grade;
-            document.getElementById('scoreGrade').className = `text-xl font-bold mt-2 ${grade.startsWith('A') ? 'text-green-600' : (grade === 'B' ? 'text-blue-600' : 'text-orange-500')}`;
+            if (accuracy >= 95) grade = 'S';
+            else if (accuracy >= 90) grade = 'A';
+            else if (accuracy >= 80) grade = 'B';
+            
+            const gradeEl = document.getElementById('scoreGrade');
+            gradeEl.innerText = grade;
+            gradeEl.className = `text-3xl font-black mt-1 relative z-10 ${grade === 'S' || grade === 'A' ? 'text-emerald-600' : (grade === 'B' ? 'text-blue-600' : 'text-amber-500')}`;
 
-            // 5. 生成回饋
-            generateFeedback(accuracy, wpm, errors);
+            // 學生姓名與日期
+            const sName = document.getElementById('studentName').value || "Student";
+            document.getElementById('displayName').innerText = sName;
+            document.getElementById('displayDate').innerText = new Date().toLocaleString();
 
-            // 6. 生成錯誤表格 (已更新，不再顯示 "heard")
+            // 生成內容
+            generateFeedback(accuracy, wpm, errors, grade);
             renderErrorTable(errors);
-
             document.getElementById('visualResult').innerHTML = visualHTML;
 
             // 切換頁面
@@ -412,104 +454,105 @@
             window.scrollTo(0,0);
         }
 
-        // --- 生成老師回饋 (同 V3) ---
-        function generateFeedback(acc, wpm, errors) {
+        function generateFeedback(acc, wpm, errors, grade) {
             const fbBox = document.getElementById('teacherFeedback');
-            let html = '';
-
-            if (acc > 90) html += `<p class="font-bold text-indigo-800">🎉 太棒了！你的發音非常準確，幾乎沒有錯誤。</p>`;
-            else if (acc > 75) html += `<p class="font-bold text-indigo-800">👍 很好！你已經掌握了文章的大部分內容。</p>`;
-            else html += `<p class="font-bold text-indigo-800">💪 精神可嘉！這篇文章有點挑戰性，但你堅持讀完了。</p>`;
-
-            html += `<ul class="list-disc list-inside pl-2 space-y-1 mt-2">`;
+            let html = `<ul class="list-disc list-inside space-y-1">`;
             
-            if (wpm < 80) html += `<li>語速稍微偏慢。建議把這篇文章<strong>重複念三次</strong>，你會發現舌頭會越來越靈活！</li>`;
-            else if (wpm > 160 && acc < 90) html += `<li>讀得很快，像連珠炮一樣！試著<strong>放慢一點點</strong>，把每個字的字尾音發清楚，分數會更高喔。</li>`;
-            else html += `<li>你的語速非常適中，聽起來很舒服自然。</li>`;
+            // 準確度回饋
+            if (grade === 'S') html += `<li><strong class="text-emerald-700">Perfect!</strong> 發音非常清晰，幾乎沒有錯誤。</li>`;
+            else if (grade === 'A') html += `<li><strong class="text-emerald-600">Excellent!</strong> 掌握得很好，只有少數單字跳過或模糊。</li>`;
+            else if (grade === 'B') html += `<li><strong class="text-blue-600">Good Job!</strong> 完成了文章，建議針對紅字部分多練習幾次。</li>`;
+            else html += `<li><strong class="text-amber-600">Keep Trying!</strong> 這篇文章可能有點難，建議先從慢速朗讀開始。</li>`;
 
-            if (errors.length > 0) {
-                const longWordErrors = errors.filter(e => cleanText(e.word).length > 7);
-                if (longWordErrors.length > 0) {
-                    html += `<li>遇到長單字（如 <span class="text-red-500 bg-red-50 px-1 rounded">${longWordErrors[0].word}</span>）時，試著把它<strong>拆成音節</strong>來念，不要急著滑過去。</li>`;
-                } else {
-                    html += `<li>請查看下方的紅色單字表，這些字可能發音不夠飽滿，或是被跳過了。</li>`;
-                }
-            }
+            // 語速回饋
+            if (wpm < 80) html += `<li>語速稍慢 (${wpm} WPM)。流暢度是建立在熟悉度上，多讀幾次速度就會自然提升。</li>`;
+            else if (wpm > 160 && acc < 90) html += `<li>讀得很快 (${wpm} WPM)，但犧牲了一些準確度。試著放慢速度，把字尾音發清楚。</li>`;
+            else html += `<li>語速適中 (${wpm} WPM)，聽起來很自然。</li>`;
+
             html += `</ul>`;
-
-            html += `<p class="mt-3 text-indigo-600 font-medium border-t border-indigo-100 pt-2">💬 老師的小叮嚀：口語是練出來的肌肉記憶。把你覺得最難的三個字，今天多念幾次，明天你就是專家了！</p>`;
             fbBox.innerHTML = html;
         }
 
-        // --- ★★★ 關鍵修改 5：錯誤表格不再顯示 "heard" ★★★ ---
         function renderErrorTable(errors) {
             const tbody = document.getElementById('errorTableBody');
             const noErr = document.getElementById('noErrorsMessage');
             tbody.innerHTML = '';
-
+            
             if (errors.length === 0) {
                 noErr.classList.remove('hidden');
                 return;
             }
             noErr.classList.add('hidden');
 
-            const displayErrors = errors.slice(0, 15);
-
-            displayErrors.forEach(err => {
-                let advice = '';
-                const cleanWord = cleanText(err.word);
+            // 顯示前 10 個錯誤，避免太長
+            const uniqueErrors = [...new Set(errors.map(e => e.word))].slice(0, 10);
+            
+            uniqueErrors.forEach(word => {
+                let advice = "練習發音";
+                const clean = cleanText(word);
+                if (clean.length > 8) advice = "拆分音節 (Syllables)";
+                else if (clean.endsWith('s') || clean.endsWith('ed')) advice = "注意字尾 (Ending Sounds)";
                 
-                if (cleanWord.length > 7) advice = "注意音節拆分";
-                else if (cleanWord.endsWith('s') || cleanWord.endsWith('ed')) advice = "注意字尾發音";
-                else advice = "多聽幾次標準發音";
-
-                const row = `
-                    <tr class="hover:bg-slate-50">
-                        <td class="px-4 py-3 font-bold text-slate-700">${err.word}</td>
-                        <td class="px-4 py-3"><span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full">跳過 / 唸錯</span></td>
-                        <td class="px-4 py-3 text-xs text-slate-500">${advice}</td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 border-b border-slate-50 last:border-0">
+                        <td class="px-4 py-3 font-bold text-slate-700 text-base">${word}</td>
+                        <td class="px-4 py-3 text-right text-xs text-slate-400">${advice}</td>
+                    </tr>`;
             });
         }
 
-        // --- 重置 App ---
+        // --- 工具功能 ---
+        async function pasteText() {
+            try {
+                const text = await navigator.clipboard.readText();
+                targetTextArea.value = text;
+            } catch (err) {
+                alert("請手動按 Ctrl+V 貼上");
+            }
+        }
+
+        function clearText() {
+            targetTextArea.value = '';
+            targetTextArea.focus();
+        }
+
         function resetApp() {
             document.getElementById('resultsPage').classList.add('hidden');
             document.getElementById('mainHeader').classList.remove('hidden');
             document.getElementById('recordPage').classList.remove('hidden');
             
-            document.getElementById('startBtn').classList.remove('hidden');
-            document.getElementById('stopBtn').classList.add('hidden');
-            liveStatus.textContent = "準備好就按下開始";
-            liveStatus.className = "text-sm text-slate-400";
-            transcriptPreview.textContent = "";
-            
-            // 恢復 "Stop" 按鈕的文字
-             document.getElementById('stopBtn').innerHTML = `
-                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
-                完成並分析
-            `;
+            // Reset UI States
+            startBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+            liveFeedbackArea.classList.add('hidden');
+            targetTextArea.removeAttribute('disabled');
+            targetTextArea.value = ''; // Optional: clear text or keep it? user might want to retry same text. keeping it is better UX.
+            targetTextArea.removeAttribute('disabled');
             
             window.scrollTo(0,0);
         }
 
-        // --- OCR (圖片轉文字) ---
+        function downloadReport() {
+            const content = document.getElementById('reportContent');
+            html2canvas(content, { scale: 2, useCORS: true }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `Fluency_Report_${new Date().getTime()}.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+            });
+        }
+
+        // OCR Handler
         document.getElementById('imageInput').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
+            const file = e.target.files[0]; if (!file) return;
             const overlay = document.getElementById('ocrOverlay');
-CSS
-            const status = document.getElementById('ocrStatus');
             overlay.classList.remove('hidden');
-
+            
             try {
-                const worker = await Tesseract.createWorker("eng", 1, {
+                const worker = await Tesseract.createWorker('eng', 1, {
                     logger: m => {
                         if (m.status === 'recognizing text') {
-                             status.textContent = `掃描中... ${Math.round(m.progress * 100)}%`;
+                            document.getElementById('ocrStatus').textContent = `掃描中... ${Math.round(m.progress * 100)}%`;
                         }
                     }
                 });
@@ -517,27 +560,13 @@ CSS
                 targetTextArea.value = ret.data.text.replace(/\n\s*\n/g, '\n').trim();
                 await worker.terminate();
             } catch (err) {
-                alert("圖片辨識失敗，請試試看清楚一點的照片");
+                console.error(err);
+                alert("圖片辨識發生錯誤，請重試。");
             } finally {
                 overlay.classList.add('hidden');
                 e.target.value = '';
             }
         });
-
-        function clearText() {
-            targetTextArea.value = '';
-        }
-
-        // --- 下載報告 ---
-        function downloadReport() {
-            const content = document.getElementById('reportContent');
-            html2canvas(content, { scale: 2, backgroundColor: "#f1f5f9" }).then(canvas => {
-                const link = document.createElement('a');
-                link.download = `Reading_Report_${new Date().toISOString().slice(0,10)}.png`;
-                link.href = canvas.toDataURL("image/png");
-                link.click();
-            });
-        }
     </script>
 </body>
 </html>
